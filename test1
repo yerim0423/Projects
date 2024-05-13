@@ -1,11 +1,13 @@
 #include <pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <net/ethernet.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/if_ether.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
 
 // SSH 패킷 식별 함수
 void analyze_ssh_packet(const u_char* payload, int payload_length) {
@@ -31,18 +33,6 @@ void analyze_http_packet(const u_char* payload, int payload_length) {
     }
 }
 
-// TCP 패킷 분석 함수
-void analyze_tcp_packet(const struct ether_header* eth_header, const struct ip* ip_header, const struct tcphdr* tcp_header, const u_char* payload, int payload_length) {
-    // SSH 패킷 식별
-    analyze_ssh_packet(payload, payload_length);
-    
-    // RDP 패킷 식별
-    analyze_rdp_packet(payload, payload_length);
-
-    // HTTP 패킷 식별
-    analyze_http_packet(payload, payload_length);
-}
-
 // 패킷 핸들러 함수
 void packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
     const struct ether_header* eth_header;
@@ -63,7 +53,7 @@ void packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr, const u_char
             tcp_header = (struct tcphdr*)((u_char*)ip_header + ip_header_length);
 
             // TCP 헤더 길이 계산 (Data Offset 필드는 32비트 워드 단위)
-            tcp_header_length = (tcp_header->th_off) * 4;
+            tcp_header_length = tcp_header->th_off * 4;
 
             // 페이로드 시작 위치 및 길이 계산
             payload = (u_char*)tcp_header + tcp_header_length;
@@ -79,59 +69,44 @@ void packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr, const u_char
             printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
             printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
 
-            // 패킷 분석 및 식별
-            analyze_tcp_packet(eth_header, ip_header, tcp_header, payload, payload_length);
+            // 패킷 식별
+            analyze_ssh_packet(payload, payload_length);
+            analyze_rdp_packet(payload, payload_length);
+            analyze_http_packet(payload, payload_length);
         }
     }
 }
 
-int main() {
-    pcap_if_t *alldevsp, *device;
-    char errbuf[PCAP_ERRBUF_SIZE], *dev;
-    pcap_t *handle;
+int main(int argc, char* argv[]) {
+    pcap_t* handle;
+    char errbuf[PCAP_ERRBUF_SIZE];
     struct bpf_program fp;
-    char filter_exp[] = "tcp";
+    char filter_exp[] = "tcp"; // TCP 필터
     bpf_u_int32 net;
 
-    // 사용할 네트워크 장치 찾기
-    if (pcap_findalldevs(&alldevsp, errbuf)) {
-        fprintf(stderr, "Error in pcap_findalldevs: %s\n", errbuf);
-        exit(1);
+    // 명령줄 인자로 pcapng 파일을 받아서 처리
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <pcapng file>\n", argv[0]);
+        return 1;
     }
 
-    // 첫 번째 네트워크 장치 사용
-    device = alldevsp;
-    if (device == NULL) {
-        fprintf(stderr, "No devices found.\n");
-        return 2;
-    }
-    dev = device->name;
-
-    printf("Using device %s\n", dev);
-
-    // 장치 열기
-    handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
+    // 파일 열기
+    handle = pcap_open_offline(argv[1], errbuf);
     if (handle == NULL) {
-        fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
-        exit(2);
-    }
-
-    // 네트워크 디바이스의 네트워크 번호와 마스크 얻기
-    if (pcap_lookupnet(dev, &net, &net, errbuf) == -1) {
-        fprintf(stderr, "Couldn't get netmask for device %s: %s\n", dev, errbuf);
-        net = 0;
+        fprintf(stderr, "Couldn't open file %s: %s\n", argv[1], errbuf);
+        return 2;
     }
 
     // 필터 표현식 컴파일
     if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
         fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-        exit(2);
+        return 2;
     }
 
     // 필터 설정
     if (pcap_setfilter(handle, &fp) == -1) {
         fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-        exit(2);
+        return 2;
     }
 
     // 패킷 캡처 시작 - 무한 루프로 각 패킷마다 packet_handler 콜백 함수 호출
@@ -140,9 +115,9 @@ int main() {
     // 종료 시 리소스 정리
     pcap_freecode(&fp);
     pcap_close(handle);
-    pcap_freealldevs(alldevsp);
 
-    printf("Capture complete.\n");
+    printf("Analysis complete.\n");
     return 0;
 }
+
 

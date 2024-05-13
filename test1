@@ -4,6 +4,7 @@
 #include <string.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
+#include <net/ethernet.h>
 
 // SSH 패킷 식별 함수
 void analyze_ssh_packet(const u_char* payload, int payload_length) {

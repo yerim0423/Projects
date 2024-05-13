@@ -8,38 +8,75 @@
 #include <netinet/tcp.h>
 #include <string.h>
 
-void analyze_payload(const u_char *payload, int payload_length) {
-    // RDP 특정 메시지 패턴 확인
-    if (payload_length >= 5 && memcmp(payload, "\x03\x00\x00\x13\x0e", 5) == 0) {
-        printf("Payload indicates RDP packet.\n");
-        // RDP 프로토콜 버전 및 특징
-        printf("RDP Protocol Version: 3.0\n");
-        printf("RDP Packet Feature: Standard RDP packet\n");
-
-        // RDP 페이로드 구조 및 특정 문자열 검색
-        const char *search_strings[] = {"RDP", "Virtual Channel Data", "License", "Bitmap", "Mouse", "Keyboard"};
-        for (int i = 0; i < sizeof(search_strings) / sizeof(search_strings[0]); ++i) {
-            if (strstr((const char *)payload, search_strings[i]) != NULL) {
-                printf("Payload contains: %s\n", search_strings[i]);
-            }
-        }
-    }
-    // 패킷 유형을 구분할 수 없음
-    else {
-        printf("Payload does not match known RDP packet types.\n");
+// SSH 패킷 식별 함수
+void analyze_ssh_packet(const struct tcphdr* tcp_header, const u_char* payload, int payload_length) {
+    if (payload_length > 4 && memcmp(payload, "SSH-", 4) == 0) {
+        printf("SSH Packet Detected\n");
     }
 }
 
-void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
-    // 이더넷 헤더, IP 헤더, TCP 헤더 포인터 선언
-    const struct ether_header *eth_header;
-    const struct ip *ip_header;
-    const struct tcphdr *tcp_header;
-    int ip_header_length, tcp_header_length, payload_length;
-    const u_char *payload;
+// RDP 패킷 식별 함수
+void analyze_rdp_packet(const u_char* payload, int payload_length) {
+    if (payload_length > 5 && memcmp(payload, "\x03\x00\x00\x13\x0e", 5) == 0) {
+        printf("RDP Packet Detected\n");
+    }
+}
+
+// 웹(HTTP) 패킷 식별 함수
+void analyze_http_packet(const u_char* payload, int payload_length) {
+    if (payload_length > 3 && (strstr((const char*)payload, "GET") != NULL || strstr((const char*)payload, "POST") != NULL)) {
+        printf("HTTP Packet Detected\n");
+    }
+}
+
+// 게임 패킷 식별 함수
+void analyze_game_packet(const u_char* payload, int payload_length) {
+    // 게임 패킷을 식별하기 위한 특정 패턴 또는 특징에 대한 분석 로직을 추가해야 합니다.
+    // 여기에 게임 패킷을 식별하는 코드를 작성합니다.
+}
+
+// TCP 패킷 분석 함수
+void analyze_tcp_packet(const struct ether_header* eth_header, const struct ip* ip_header, const struct tcphdr* tcp_header, const u_char* payload, int payload_length) {
+    printf("----- TCP Packet Analysis -----\n");
+    printf("Src MAC: %02x:%02x:%02x:%02x:%02x:%02x, Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+           eth_header->ether_shost[0], eth_header->ether_shost[1], eth_header->ether_shost[2],
+           eth_header->ether_shost[3], eth_header->ether_shost[4], eth_header->ether_shost[5],
+           eth_header->ether_dhost[0], eth_header->ether_dhost[1], eth_header->ether_dhost[2],
+           eth_header->ether_dhost[3], eth_header->ether_dhost[4], eth_header->ether_dhost[5]);
+    printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
+    printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
+
+    // SSH 패킷인지 확인
+    if (ntohs(tcp_header->th_dport) == 22 || ntohs(tcp_header->th_sport) == 22) {
+        analyze_ssh_packet(tcp_header, payload, payload_length);
+    }
+    // RDP 패킷인지 확인
+    else if (ntohs(tcp_header->th_dport) == 3389 || ntohs(tcp_header->th_sport) == 3389) {
+        analyze_rdp_packet(payload, payload_length);
+    }
+    // HTTP 패킷인지 확인
+    else if (ntohs(tcp_header->th_dport) == 443 || ntohs(tcp_header->th_sport) == 443 ||
+             ntohs(tcp_header->th_dport) == 80 || ntohs(tcp_header->th_sport) == 80 ||
+             ntohs(tcp_header->th_dport) == 8080 || ntohs(tcp_header->th_sport) == 8080 ||
+             ntohs(tcp_header->th_dport) == 8000 || ntohs(tcp_header->th_sport) == 8000 ||
+             ntohs(tcp_header->th_dport) == 8443 || ntohs(tcp_header->th_sport) == 8443) {
+        analyze_http_packet(payload, payload_length);
+    }
+    // 게임 패킷인지 확인
+    else {
+        analyze_game_packet(payload, payload_length);
+    }
+}
+
+// 패킷 핸들러 함수
+void packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
+    const struct ether_header* eth_header;
+    const struct ip* ip_header;
+    const u_char* payload;
+    int ip_header_length;
 
     // 이더넷 헤더 분석
-    eth_header = (struct ether_header *)packet;
+    eth_header = (struct ether_header*)packet;
     if (ntohs(eth_header->ether_type) == ETHERTYPE_IP) {
         ip_header = (struct ip*)(packet + sizeof(struct ether_header));
 
@@ -47,82 +84,56 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
         ip_header_length = ip_header->ip_hl * 4;
 
         if (ip_header->ip_p == IPPROTO_TCP) {
-            tcp_header = (struct tcphdr*)((u_char*)ip_header + ip_header_length);
-
-            // TCP 헤더 길이 계산 (Data Offset 필드는 32비트 워드 단위)
-            tcp_header_length = (tcp_header->th_off) * 4;
-
-            // 페이로드 시작 위치 및 길이 계산
+            const struct tcphdr* tcp_header = (struct tcphdr*)((u_char*)ip_header + ip_header_length);
+            int tcp_header_length = tcp_header->th_off * 4;
             payload = (u_char*)tcp_header + tcp_header_length;
-            payload_length = pkthdr->len - (sizeof(struct ether_header) + ip_header_length + tcp_header_length);
+            int payload_length = pkthdr->len - (sizeof(struct ether_header) + ip_header_length + tcp_header_length);
 
-            // 필요한 정보 출력
-            printf("Src MAC: %02x:%02x:%02x:%02x:%02x:%02x, Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-                   eth_header->ether_shost[0], eth_header->ether_shost[1], eth_header->ether_shost[2],
-                   eth_header->ether_shost[3], eth_header->ether_shost[4], eth_header->ether_shost[5],
-                   eth_header->ether_dhost[0], eth_header->ether_dhost[1], eth_header->ether_dhost[2],
-                   eth_header->ether_dhost[3], eth_header->ether_dhost[4], eth_header->ether_dhost[5]);
-
-            printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
-            printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
-
-            // 페이로드 출력
-            if (payload_length > 0) {
-                printf("Payload (%d bytes):\n", payload_length);
-                for (int i = 0; i < payload_length; i++) {
-                    printf("%02x ", payload[i]);
-                    if ((i + 1) % 16 == 0) printf("\n");
-                }
-                printf("\n");
-
-                // 페이로드 분석
-                analyze_payload(payload, payload_length);
-            } else {
-                printf("No Payload\n");
-            }
+            // TCP 패킷 분석 함수 호출
+            analyze_tcp_packet(eth_header, ip_header, tcp_header, payload, payload_length);
         }
     }
 }
 
-int main(int argc, char *argv[]) {
-    pcap_t *handle;
+int main(int argc, char* argv[]) {
+    pcap_t* handle;
     char errbuf[PCAP_ERRBUF_SIZE];
     struct bpf_program fp;
-    char filter_exp[] = "tcp";
+    char filter_exp[] = "tcp"; // TCP 필터
     bpf_u_int32 net;
 
-    // pcap 파일 경로 확인
+    // 명령줄 인자로 pcapng 파일을 받아서 처리
     if (argc != 2) {
-        fprintf(stderr, "Usage: %s pcap_file\n", argv[0]);
+        fprintf(stderr, "Usage: %s <pcapng file>\n", argv[0]);
         return 1;
     }
 
-    // pcap 파일 열기
+    // 파일 열기
     handle = pcap_open_offline(argv[1], errbuf);
     if (handle == NULL) {
-        fprintf(stderr, "Error opening pcap file: %s\n", errbuf);
+        fprintf(stderr, "Couldn't open file %s: %s\n", argv[1], errbuf);
         return 2;
     }
 
     // 필터 표현식 컴파일
     if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
-        fprintf(stderr, "%s 필터 파싱 실패: %s\n", filter_exp, pcap_geterr(handle));
-        exit(2);
+        fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+        return 2;
     }
 
     // 필터 설정
     if (pcap_setfilter(handle, &fp) == -1) {
-        fprintf(stderr, "%s 필터 설치 실패: %s\n", filter_exp, pcap_geterr(handle));
-        exit(2);
+        fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+        return 2;
     }
 
-    // 패킷 캡처 시작 - 각 패킷에 대해 패킷 핸들러 콜백 함수를 호출하는 무한 루프
+    // 패킷 캡처 시작 - 무한 루프로 각 패킷마다 packet_handler 콜백 함수 호출
     pcap_loop(handle, 0, packet_handler, NULL);
 
     // 종료 시 리소스 정리
     pcap_freecode(&fp);
     pcap_close(handle);
 
-    printf("캡처 완료.\n");
+    printf("Analysis complete.\n");
     return 0;
 }

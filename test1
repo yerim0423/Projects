@@ -41,53 +41,67 @@ void analyze_game_packet(const u_char* payload, int payload_length) {
 }
 
 // TCP 패킷 분석 함수
-void analyze_tcp_packet(const struct tcphdr* tcp_header, const u_char* payload, int payload_length) {
-    // SSH 포트인지 확인
+void analyze_tcp_packet(const struct ether_header* eth_header, const struct ip* ip_header, const struct tcphdr* tcp_header, const u_char* payload, int payload_length) {
+    printf("----- TCP Packet Analysis -----\n");
+    printf("Src MAC: %02x:%02x:%02x:%02x:%02x:%02x, Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        eth_header->ether_shost[0], eth_header->ether_shost[1], eth_header->ether_shost[2],
+        eth_header->ether_shost[3], eth_header->ether_shost[4], eth_header->ether_shost[5],
+        eth_header->ether_dhost[0], eth_header->ether_dhost[1], eth_header->ether_dhost[2],
+        eth_header->ether_dhost[3], eth_header->ether_dhost[4], eth_header->ether_dhost[5]);
+    printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
+    printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
+
+    // SSH 패킷인지 확인
     if (ntohs(tcp_header->th_dport) == 22 || ntohs(tcp_header->th_sport) == 22) {
-        // SSH 패킷 식별 함수 호출
         analyze_ssh_packet(payload, payload_length);
     }
-    // RDP 포트인지 확인
+    // RDP 패킷인지 확인  
     else if (ntohs(tcp_header->th_dport) == 3389 || ntohs(tcp_header->th_sport) == 3389) {
-        // RDP 패킷 식별 함수 호출
         analyze_rdp_packet(payload, payload_length);
     }
-    // HTTP 포트인지 확인
-    else if (ntohs(tcp_header->th_dport) == 80 || ntohs(tcp_header->th_sport) == 80 ||
-             ntohs(tcp_header->th_dport) == 443 || ntohs(tcp_header->th_sport) == 443 ||
-             ntohs(tcp_header->th_dport) == 8080 || ntohs(tcp_header->th_sport) == 8080) {
-        // HTTP 패킷 식별 함수 호출
+    // 게임 패킷인지 확인
+    else if (ntohs(tcp_header->th_dport) == 25565 || ntohs(tcp_header->th_sport) == 25565) {
+        analyze_game_packet(payload, payload_length);
+    }
+    // HTTP 패킷인지 확인
+    else if (ntohs(tcp_header->th_dport) == 443 || ntohs(tcp_header->th_sport) == 443 ||
+        ntohs(tcp_header->th_dport) == 80 || ntohs(tcp_header->th_sport) == 80 ||
+        ntohs(tcp_header->th_dport) == 8080 || ntohs(tcp_header->th_sport) == 8080 || // 대부분의 웹 서버
+        ntohs(tcp_header->th_dport) == 8000 || ntohs(tcp_header->th_sport) == 8000 || // 일부 웹 서버
+        ntohs(tcp_header->th_dport) == 8443 || ntohs(tcp_header->th_sport) == 8443) {// HTTPS (일부 서버)
         analyze_http_packet(payload, payload_length);
     }
-    // 게임 포트인지 확인
-    else if (ntohs(tcp_header->th_dport) == 25565 || ntohs(tcp_header->th_sport) == 25565) {
-        // 게임 패킷 식별 함수 호출
-        analyze_game_packet(payload, payload_length);
+    else {
+        printf("Unknown\n");
     }
 }
 
 // 패킷 핸들러 함수
 void packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
+    const struct ether_header* eth_header;
     const struct ip* ip_header;
     const struct tcphdr* tcp_header;
     const u_char* payload;
     int ip_header_length;
 
-    // IP 헤더 분석
-    ip_header = (struct ip*)(packet + sizeof(struct ether_header));
-    ip_header_length = ip_header->ip_hl * 4;
+    // 이더넷 헤더 분석
+    eth_header = (struct ether_header*)packet;
+    if (ntohs(eth_header->ether_type) == ETHERTYPE_IP) {
+        ip_header = (struct ip*)(packet + sizeof(struct ether_header));
 
-    // TCP 헤더 분석
-    tcp_header = (struct tcphdr*)(packet + sizeof(struct ether_header) + ip_header_length);
+        // IP 헤더 길이 계산 (IHL 필드는 32비트 워드 단위)
+        ip_header_length = ip_header->ip_hl * 4;
 
-    // 페이로드 시작 위치 계산
-    payload = packet + sizeof(struct ether_header) + ip_header_length + (tcp_header->th_off * 4);
+        if (ip_header->ip_p == IPPROTO_TCP) {
+            tcp_header = (struct tcphdr*)((u_char*)ip_header + ip_header_length);
+            int tcp_header_length = tcp_header->th_off * 4;
+            payload = (u_char*)tcp_header + tcp_header_length;
+            int payload_length = pkthdr->len - (sizeof(struct ether_header) + ip_header_length + tcp_header_length);
 
-    // 페이로드 길이 계산
-    int payload_length = pkthdr->len - (sizeof(struct ether_header) + ip_header_length + (tcp_header->th_off * 4));
-
-    // TCP 패킷 분석 함수 호출
-    analyze_tcp_packet(tcp_header, payload, payload_length);
+            // TCP 패킷 분석 함수 호출
+            analyze_tcp_packet(eth_header, ip_header, tcp_header, payload, payload_length);
+        }
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -132,3 +146,4 @@ int main(int argc, char* argv[]) {
     printf("Analysis complete.\n");
     return 0;
 }
+

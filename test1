@@ -8,11 +8,9 @@
 #include <netinet/tcp.h>
 #include <string.h>
 
-#define GAME_PACKET_IDENTIFIER "GAME_PACKET_IDENTIFIER"
-
 void analyze_payload(const u_char *payload, int payload_length) {
     // SSH 패킷인지 확인
-    if (payload[0] == 'S' && payload[1] == 'S' && payload[2] == 'H' && payload[3] == '-') {
+    if (strstr((const char *)payload, "SSH-") != NULL) {
         printf("Payload indicates SSH packet.\n");
     }
     // RDP 패킷인지 확인
@@ -20,16 +18,12 @@ void analyze_payload(const u_char *payload, int payload_length) {
         printf("Payload indicates RDP packet.\n");
     }
     // HTTP 패킷인지 확인
-    else if (strstr((const char *)payload, "GET ") != NULL || strstr((const char *)payload, "POST ") != NULL || strstr((const char *)payload, "HTTP/1.") != NULL) {
+    else if (strstr((const char *)payload, "HTTP") != NULL) {
         printf("Payload indicates HTTP packet.\n");
     }
-    // 게임 패킷인지 확인
-    else if (strstr((const char *)payload, GAME_PACKET_IDENTIFIER) != NULL) {
+    // 게임 패킷인지 확인 (예시)
+    else if (strstr((const char *)payload, "GAME_PACKET_IDENTIFIER") != NULL) {
         printf("Payload indicates game packet.\n");
-    }
-    // SSH 패킷인지 추가로 확인
-    else if (payload_length > 4 && payload[0] == 0x00 && payload[1] == 0x00 && payload[2] == 0x00 && payload[3] == 0x47) {
-        printf("Payload indicates SSH packet (alternate detection).\n");
     }
     // 패킷 유형을 구분할 수 없음
     else {
@@ -38,42 +32,55 @@ void analyze_payload(const u_char *payload, int payload_length) {
 }
 
 void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
-    // IP 헤더, TCP 헤더 포인터 선언
+    // 이더넷 헤더, IP 헤더, TCP 헤더 포인터 선언
+    const struct ether_header *eth_header;
     const struct ip *ip_header;
     const struct tcphdr *tcp_header;
     int ip_header_length, tcp_header_length, payload_length;
     const u_char *payload;
 
-    // IP 헤더 분석
-    ip_header = (struct ip*)(packet + sizeof(struct ether_header));
-    ip_header_length = ip_header->ip_hl * 4;
+    // 이더넷 헤더 분석
+    eth_header = (struct ether_header *)packet;
+    if (ntohs(eth_header->ether_type) == ETHERTYPE_IP) {
+        ip_header = (struct ip*)(packet + sizeof(struct ether_header));
 
-    if (ip_header->ip_p == IPPROTO_TCP) {
-        // TCP 헤더 분석
-        tcp_header = (struct tcphdr*)(packet + sizeof(struct ether_header) + ip_header_length);
-        tcp_header_length = (tcp_header->th_off) * 4;
+        // IP 헤더 길이 계산 (IHL 필드는 32비트 워드 단위)
+        ip_header_length = ip_header->ip_hl * 4;
 
-        // 페이로드 분석
-        payload = packet + sizeof(struct ether_header) + ip_header_length + tcp_header_length;
-        payload_length = pkthdr->len - (sizeof(struct ether_header) + ip_header_length + tcp_header_length);
+        if (ip_header->ip_p == IPPROTO_TCP) {
+            tcp_header = (struct tcphdr*)((u_char*)ip_header + ip_header_length);
 
-        // 필요한 정보 출력
-        printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
-        printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
+            // TCP 헤더 길이 계산 (Data Offset 필드는 32비트 워드 단위)
+            tcp_header_length = (tcp_header->th_off) * 4;
 
-        // 페이로드 출력
-        if (payload_length > 0) {
-            printf("Payload (%d bytes):\n", payload_length);
-            for (int i = 0; i < payload_length; i++) {
-                printf("%02x ", payload[i]);
-                if ((i + 1) % 16 == 0) printf("\n");
+            // 페이로드 시작 위치 및 길이 계산
+            payload = (u_char*)tcp_header + tcp_header_length;
+            payload_length = pkthdr->len - (sizeof(struct ether_header) + ip_header_length + tcp_header_length);
+
+            // 필요한 정보 출력
+            printf("Src MAC: %02x:%02x:%02x:%02x:%02x:%02x, Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+                   eth_header->ether_shost[0], eth_header->ether_shost[1], eth_header->ether_shost[2],
+                   eth_header->ether_shost[3], eth_header->ether_shost[4], eth_header->ether_shost[5],
+                   eth_header->ether_dhost[0], eth_header->ether_dhost[1], eth_header->ether_dhost[2],
+                   eth_header->ether_dhost[3], eth_header->ether_dhost[4], eth_header->ether_dhost[5]);
+
+            printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
+            printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
+
+            // 페이로드 출력
+            if (payload_length > 0) {
+                printf("Payload (%d bytes):\n", payload_length);
+                for (int i = 0; i < payload_length; i++) {
+                    printf("%02x ", payload[i]);
+                    if ((i + 1) % 16 == 0) printf("\n");
+                }
+                printf("\n");
+
+                // 페이로드 분석
+                analyze_payload(payload, payload_length);
+            } else {
+                printf("No Payload\n");
             }
-            printf("\n");
-
-            // 페이로드 분석
-            analyze_payload(payload, payload_length);
-        } else {
-            printf("No Payload\n");
         }
     }
 }

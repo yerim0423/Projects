@@ -8,7 +8,7 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 
-// 이더넷 헤더를 출력하는 함수
+// Ethernet 헤더 출력 함수
 void print_ethernet_header(const struct ether_header *eth_header) {
     printf("Src MAC: %02x:%02x:%02x:%02x:%02x:%02x, Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
            eth_header->ether_shost[0], eth_header->ether_shost[1], eth_header->ether_shost[2],
@@ -17,17 +17,17 @@ void print_ethernet_header(const struct ether_header *eth_header) {
            eth_header->ether_dhost[3], eth_header->ether_dhost[4], eth_header->ether_dhost[5]);
 }
 
-// IP 헤더를 출력하는 함수
+// IP 헤더 출력 함수
 void print_ip_header(const struct ip *ip_header) {
     printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
 }
 
-// TCP 헤더를 출력하는 함수
+// TCP 헤더 출력 함수
 void print_tcp_header(const struct tcphdr *tcp_header) {
     printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
 }
 
-// 패킷의 페이로드를 분석하는 함수
+// 패킷 분석 함수
 void analyze_packet(const u_char *payload, int payload_length) {
     // HTTPS 패턴 검색
     if (payload_length >= 12 && memcmp(payload, "\x16\x03", 2) == 0 && memcmp(payload + 5, "\x01", 1) == 0 && memcmp(payload + 9, "\x03", 1) == 0) {
@@ -62,9 +62,6 @@ void offline_packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, cons
     // 페이로드 길이 계산
     payload_length = pkthdr->len - (ethernet_header_size + ip_header_size + tcp_header_size);
 
-    // 패킷의 페이로드 분석
-    analyze_packet(payload, payload_length);
-
     // Ethernet, IP, TCP 헤더 출력
     const struct ether_header *eth_header = (const struct ether_header *)packet;
     const struct ip *ip_header = (const struct ip *)(packet + ethernet_header_size);
@@ -74,31 +71,33 @@ void offline_packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, cons
     print_ethernet_header(eth_header);
     print_ip_header(ip_header);
     print_tcp_header(tcp_header);
+
+    // 패킷의 페이로드 분석
+    analyze_packet(payload, payload_length);
 }
 
 int main(int argc, char *argv[]) {
-    pcap_t *handle; // pcap 핸들러
-    char errbuf[PCAP_ERRBUF_SIZE]; // 오류 메시지를 저장할 버퍼
+    pcap_t *handle;
+    char errbuf[PCAP_ERRBUF_SIZE];
 
-    // 명령줄 인자로 pcap 파일을 받아서 처리
     if (argc != 2) {
-        fprintf(stderr, "Usage: %s <pcap_file>\n", argv[0]); // 사용법 출력
-        return 1; // 종료 코드 반환
+        fprintf(stderr, "Usage: %s <pcap_file>\n", argv[0]);
+        return 1;
     }
 
-    // pcap 파일 열기
-    handle = pcap_open_offline(argv[1], errbuf); // 지정된 pcap 파일을 열고 핸들러를 반환
+    // 파일 열기
+    handle = pcap_open_offline(argv[1], errbuf);
     if (handle == NULL) {
-        fprintf(stderr, "Couldn't open file %s: %s\n", argv[1], errbuf); // 파일 열기 실패 메시지 출력
-        return 2; // 종료 코드 반환
+        fprintf(stderr, "Couldn't open file %s: %s\n", argv[1], errbuf);
+        return 2;
     }
 
-    // 패킷 캡처 시작 - 무한 루프로 각 패킷마다 offline_packet_handler 콜백 함수 호출
-    pcap_loop(handle, 0, offline_packet_handler, NULL); // 지정된 pcap 파일의 각 패킷에 대해 offline_packet_handler 콜백 함수를 호출
+    // 오프라인 패킷 캡처 시작 - 각 패킷마다 offline_packet_handler 호출
+    pcap_loop(handle, 0, offline_packet_handler, NULL);
 
-    // 종료 시 리소스 정리
-    pcap_close(handle); // pcap 핸들러를 닫음
+    // 리소스 정리
+    pcap_close(handle);
 
-    printf("Analysis complete.\n"); // 분석 완료 메시지 출력
-    return 0; // 프로그램 정상 종료
+    printf("Analysis complete.\n");
+    return 0;
 }

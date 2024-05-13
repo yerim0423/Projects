@@ -120,4 +120,3 @@ int main(int argc, char *argv[]) {
     printf("캡처 완료.\n");
     return 0;
 }
-

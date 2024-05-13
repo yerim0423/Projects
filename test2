@@ -30,7 +30,7 @@ void print_tcp_header(const struct tcphdr *tcp_header) {
     printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
 }
 
-// 패킷 페이로드 분석 함수
+// 패킷 페이로드 분석 및 프로토콜 반환 함수
 const char *analyze_packet(const u_char *payload, int payload_length) {
     // HTTPS 패턴 검색
     if (payload_length >= 12 && memcmp(payload, "\x16\x03", 2) == 0 && memcmp(payload + 5, "\x01", 1) == 0 && memcmp(payload + 9, "\x03", 1) == 0) {
@@ -97,5 +97,3 @@ int main(int argc, char *argv[]) {
     printf("Analysis complete.\n");
     return 0;
 }
-
-

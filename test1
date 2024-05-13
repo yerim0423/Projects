@@ -6,7 +6,6 @@
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
-#include <string.h>
 
 // SSH 패킷 식별 함수
 void analyze_ssh_packet(const u_char* payload, int payload_length) {
@@ -146,5 +145,4 @@ int main() {
     printf("Capture complete.\n");
     return 0;
 }
-
 

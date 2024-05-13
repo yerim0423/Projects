@@ -2,9 +2,44 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 
-// 패킷 핸들러 함수
-void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
+void print_ethernet_header(const struct ether_header *eth_header) {
+    printf("Src MAC: %02x:%02x:%02x:%02x:%02x:%02x, Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+           eth_header->ether_shost[0], eth_header->ether_shost[1], eth_header->ether_shost[2],
+           eth_header->ether_shost[3], eth_header->ether_shost[4], eth_header->ether_shost[5],
+           eth_header->ether_dhost[0], eth_header->ether_dhost[1], eth_header->ether_dhost[2],
+           eth_header->ether_dhost[3], eth_header->ether_dhost[4], eth_header->ether_dhost[5]);
+}
+
+void print_ip_header(const struct ip *ip_header) {
+    printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
+}
+
+void print_tcp_header(const struct tcphdr *tcp_header) {
+    printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
+}
+
+void analyze_packet(const u_char *payload, int payload_length) {
+    // HTTPS 패턴 검색
+    if (payload_length >= 12 && memcmp(payload, "\x16\x03", 2) == 0 && memcmp(payload + 5, "\x01", 1) == 0 && memcmp(payload + 9, "\x03", 1) == 0) {
+        printf("HTTPS 프로토콜 발견\n");
+    }
+    // SSH 패턴 검색
+    else if (payload_length >= 3 && memcmp(payload, "SSH", 3) == 0) {
+        printf("SSH 프로토콜 발견\n");
+    }
+    // RDP 패턴 검색
+    else if (payload_length >= 3 && memcmp(payload, "\x03\x00\x00", 3) == 0) {
+        printf("RDP 프로토콜 발견\n");
+    }
+}
+
+void offline_packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
     const u_char *payload;
     int payload_length;
 
@@ -22,18 +57,8 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
     // 페이로드 길이 계산
     payload_length = pkthdr->len - (ethernet_header_size + ip_header_size + tcp_header_size);
 
-    // HTTPS 패턴 검색
-    if (payload_length >= 12 && memcmp(payload, "\x16\x03", 2) == 0 && memcmp(payload + 5, "\x01", 1) == 0 && memcmp(payload + 9, "\x03", 1) == 0) {
-        printf("HTTPS 프로토콜 발견\n");
-    }
-    // SSH 패턴 검색
-    else if (payload_length >= 3 && memcmp(payload, "SSH", 3) == 0) {
-        printf("SSH 프로토콜 발견\n");
-    }
-    // RDP 패턴 검색
-    else if (payload_length >= 3 && memcmp(payload, "\x03\x00\x00", 3) == 0) {
-        printf("RDP 프로토콜 발견\n");
-    }
+    // HTTPS, SSH, RDP 패턴 검색
+    analyze_packet(payload, payload_length);
 
     // Ethernet 헤더, IP 헤더, TCP 헤더 파싱
     const struct ether_header *eth_header = (const struct ether_header *)packet;
@@ -41,40 +66,32 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
     const struct tcphdr *tcp_header = (const struct tcphdr *)(packet + ethernet_header_size + ip_header_size);
 
     // 필요한 정보 출력
-    printf("Src MAC: %02x:%02x:%02x:%02x:%02x:%02x, Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-           eth_header->ether_shost[0], eth_header->ether_shost[1], eth_header->ether_shost[2],
-           eth_header->ether_shost[3], eth_header->ether_shost[4], eth_header->ether_shost[5],
-           eth_header->ether_dhost[0], eth_header->ether_dhost[1], eth_header->ether_dhost[2],
-           eth_header->ether_dhost[3], eth_header->ether_dhost[4], eth_header->ether_dhost[5]);
-
-    printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
-    printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
+    print_ethernet_header(eth_header);
+    print_ip_header(ip_header);
+    print_tcp_header(tcp_header);
 }
 
 int main(int argc, char *argv[]) {
     pcap_t *handle;
     char errbuf[PCAP_ERRBUF_SIZE];
 
-    // 명령줄 인자로 pcapng 파일을 받아서 처리
     if (argc != 2) {
-        fprintf(stderr, "Usage: %s <pcapng file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s pcap_file\n", argv[0]);
         return 1;
     }
 
-    // 파일 열기
     handle = pcap_open_offline(argv[1], errbuf);
     if (handle == NULL) {
         fprintf(stderr, "Couldn't open file %s: %s\n", argv[1], errbuf);
         return 2;
     }
 
-    // 패킷 캡처 시작 - 무한 루프로 각 패킷마다 packet_handler 콜백 함수 호출
-    pcap_loop(handle, 0, packet_handler, NULL);
+    pcap_loop(handle, 0, offline_packet_handler, NULL);
 
-    // 종료 시 리소스 정리
     pcap_close(handle);
 
     printf("Analysis complete.\n");
     return 0;
 }
+
 

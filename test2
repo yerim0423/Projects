@@ -7,6 +7,28 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
+// Ethernet 헤더 출력 함수
+void print_ethernet_header(const struct ether_header *eth_header) {
+    // 송신 및 수신 MAC 주소 출력
+    printf("Src MAC: %02x:%02x:%02x:%02x:%02x:%02x, Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+           eth_header->ether_shost[0], eth_header->ether_shost[1], eth_header->ether_shost[2],
+           eth_header->ether_shost[3], eth_header->ether_shost[4], eth_header->ether_shost[5],
+           eth_header->ether_dhost[0], eth_header->ether_dhost[1], eth_header->ether_dhost[2],
+           eth_header->ether_dhost[3], eth_header->ether_dhost[4], eth_header->ether_dhost[5]);
+}
+
+// IP 헤더 출력 함수
+void print_ip_header(const struct ip *ip_header) {
+    // 송신 및 수신 IP 주소 출력
+    printf("Src IP: %s, Dst IP: %s\n", inet_ntoa(ip_header->ip_src), inet_ntoa(ip_header->ip_dst));
+}
+
+// TCP 헤더 출력 함수
+void print_tcp_header(const struct tcphdr *tcp_header) {
+    // 송신 및 수신 포트 출력
+    printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
+}
+
 // 패킷 핸들러 함수
 void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
     const u_char *payload;
@@ -21,24 +43,10 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
     // TCP 헤더 크기
     int tcp_header_size = (packet[ethernet_header_size + ip_header_size + 12] >> 4) * 4;
 
-    // Ethernet 헤더 정보 출력
-    printf("Ethernet Header:\n");
-    printf("    Src MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-           packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]);
-    printf("    Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-           packet[0], packet[1], packet[2], packet[3], packet[4], packet[5]);
-
-    // IP 헤더 정보 출력
-    printf("IP Header:\n");
-    struct ip *ip_header = (struct ip *)(packet + ethernet_header_size);
-    printf("    Src IP: %s\n", inet_ntoa(ip_header->ip_src));
-    printf("    Dst IP: %s\n", inet_ntoa(ip_header->ip_dst));
-
-    // TCP 헤더 정보 출력
-    printf("TCP Header:\n");
-    struct tcphdr *tcp_header = (struct tcphdr *)(packet + ethernet_header_size + ip_header_size);
-    printf("    Src Port: %d\n", ntohs(tcp_header->th_sport));
-    printf("    Dst Port: %d\n", ntohs(tcp_header->th_dport));
+    // Ethernet, IP, TCP 헤더 정보 출력
+    print_ethernet_header((struct ether_header *)packet);
+    print_ip_header((struct ip *)(packet + ethernet_header_size));
+    print_tcp_header((struct tcphdr *)(packet + ethernet_header_size + ip_header_size));
 
     // 페이로드 시작 위치 계산
     payload = packet + ethernet_header_size + ip_header_size + tcp_header_size;
@@ -87,5 +95,4 @@ int main(int argc, char *argv[]) {
     printf("Analysis complete.\n");
     return 0;
 }
-
 

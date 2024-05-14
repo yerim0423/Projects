@@ -2,10 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <netinet/in.h>
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
-#include <arpa/inet.h>
 
 // Ethernet 헤더 출력 함수
 void print_ethernet_header(const struct ether_header *eth_header) {
@@ -43,29 +43,27 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
     // TCP 헤더 크기
     int tcp_header_size = (packet[ethernet_header_size + ip_header_size + 12] >> 4) * 4;
 
-    // Ethernet, IP, TCP 헤더 정보 출력
-    print_ethernet_header((struct ether_header *)packet);
-    print_ip_header((struct ip *)(packet + ethernet_header_size));
-    print_tcp_header((struct tcphdr *)(packet + ethernet_header_size + ip_header_size));
-
     // 페이로드 시작 위치 계산
     payload = packet + ethernet_header_size + ip_header_size + tcp_header_size;
     // 페이로드 길이 계산
     payload_length = pkthdr->len - (ethernet_header_size + ip_header_size + tcp_header_size);
 
+    // Ethernet, IP, TCP 헤더 정보 출력
+    print_ethernet_header((struct ether_header *)packet);
+    print_ip_header((struct ip *)(packet + ethernet_header_size));
+    print_tcp_header((struct tcphdr *)(packet + ethernet_header_size + ip_header_size));
+
     // HTTPS 패턴 검색
     if (payload_length >= 12 && memcmp(payload, "\x16\x03", 2) == 0 && memcmp(payload + 5, "\x01", 1) == 0 && memcmp(payload + 9, "\x03", 1) == 0) {
-        printf("Detected Protocol: HTTPS\n");
+        printf("HTTPS 프로토콜 발견\n");
     }
     // SSH 패턴 검색
     else if (payload_length >= 3 && memcmp(payload, "SSH", 3) == 0) {
-        printf("Detected Protocol: SSH\n");
+        printf("SSH 프로토콜 발견\n");
     }
     // RDP 패턴 검색
-    else if (payload_length >= 5 && memcmp(payload, "\x03\x00\x00\x0b", 4) == 0) {
-        printf("Detected Protocol: RDP\n");
-    } else {
-        printf("Detected Protocol: Unknown\n");
+    else if (payload_length >= 3 && memcmp(payload, "\x03\x00\x00", 3) == 0) {
+        printf("RDP 프로토콜 발견\n");
     }
 }
 
@@ -95,4 +93,3 @@ int main(int argc, char *argv[]) {
     printf("Analysis complete.\n");
     return 0;
 }
-

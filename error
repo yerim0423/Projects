@@ -1,0 +1,8 @@
+pcap.c: In function ‘packet_handler’:
+pcap.c:65:28: warning: implicit declaration of function ‘analyze_packet’ [-Wimplicit-function-declaration]
+   65 |     const char *protocol = analyze_packet(payload, payload_length);
+      |                            ^~~~~~~~~~~~~~
+pcap.c:65:28: warning: initialization of ‘const char *’ from ‘int’ makes pointer from integer without a cast [-Wint-conversion]
+/usr/bin/ld: /tmp/ccW8ZgEk.o: in function `packet_handler':
+pcap.c:(.text+0x26e): undefined reference to `analyze_packet'
+collect2: error: ld returned 1 exit status

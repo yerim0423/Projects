@@ -60,7 +60,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
     int ip_header_size = (packet[ethernet_header_size] & 0x0F) * 4;
 
     // TCP 헤더 크기
-    int tcp_header_size = (packet[ethernet_header_size + ip_header_size + 12] >> 4) * 4;
+    int tcp_header_size = (((packet[ethernet_header_size + ip_header_size + 12]) & 0xF0) >> 4) * 4;
 
     // 페이로드 시작 위치 계산
     payload = packet + ethernet_header_size + ip_header_size + tcp_header_size;
@@ -103,3 +103,4 @@ int main(int argc, char *argv[]) {
     printf("Analysis complete.\n");
     return 0;
 }
+

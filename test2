@@ -33,7 +33,7 @@ void print_tcp_header(const struct tcphdr *tcp_header) {
 // 패킷 페이로드 분석 및 프로토콜 반환 함수
 const char *analyze_packet(const u_char *payload, int payload_length) {
     // HTTPS 패턴 검색
-    if (payload_length >= 12 && memcmp(payload, "\x16\x03", 2) == 0 && memcmp(payload + 5, "\x01", 1) == 0 && memcmp(payload + 9, "\x03", 1) == 0) {
+    if (payload_length >= 12 && memcmp(payload, "\x16\x03", 2) == 0 && payload[5] == 0x01 && payload[9] == 0x03) {
         return "HTTPS";
     }
     // SSH 패턴 검색
@@ -60,7 +60,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
     int ip_header_size = (packet[ethernet_header_size] & 0x0F) * 4;
 
     // TCP 헤더 크기
-    int tcp_header_size = (((packet[ethernet_header_size + ip_header_size + 12]) & 0xF0) >> 4) * 4;
+    int tcp_header_size = (packet[ethernet_header_size + ip_header_size + 12] >> 4) * 4;
 
     // 페이로드 시작 위치 계산
     payload = packet + ethernet_header_size + ip_header_size + tcp_header_size;
@@ -103,4 +103,5 @@ int main(int argc, char *argv[]) {
     printf("Analysis complete.\n");
     return 0;
 }
+
 

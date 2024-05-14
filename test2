@@ -30,37 +30,55 @@ void print_tcp_header(const struct tcphdr *tcp_header) {
     printf("Src Port: %d, Dst Port: %d\n", ntohs(tcp_header->th_sport), ntohs(tcp_header->th_dport));
 }
 
-// 패킷 핸들러 함수
-void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
-    const u_char *payload;
-    int payload_length;
-
-    // Ethernet 헤더 크기
-    int ethernet_header_size = 14;
-
-    // IP 헤더 크기 (IPv4의 경우)
-    int ip_header_size = (packet[ethernet_header_size] & 0x0F) * 4;
-
-    // TCP 헤더 크기
-    int tcp_header_size = (packet[ethernet_header_size + ip_header_size + 12] >> 4) * 4;
-
-    // 페이로드 시작 위치 계산
-    payload = packet + ethernet_header_size + ip_header_size + tcp_header_size;
-    // 페이로드 길이 계산
-    payload_length = pkthdr->len - (ethernet_header_size + ip_header_size + tcp_header_size);
-
+// 패킷 페이로드 분석 및 프로토콜 반환 함수
+const char *analyze_packet(const u_char *payload, int payload_length) {
     // HTTPS 패턴 검색
     if (payload_length >= 12 && memcmp(payload, "\x16\x03", 2) == 0 && memcmp(payload + 5, "\x01", 1) == 0 && memcmp(payload + 9, "\x03", 1) == 0) {
-        printf("HTTPS 프로토콜 발견\n");
+        return "HTTPS";
     }
     // SSH 패턴 검색
     else if (payload_length >= 3 && memcmp(payload, "SSH", 3) == 0) {
-        printf("SSH 프로토콜 발견\n");
+        return "SSH";
     }
     // RDP 패턴 검색
     else if (payload_length >= 3 && memcmp(payload, "\x03\x00\x00", 3) == 0) {
-        printf("RDP 프로토콜 발견\n");
+        return "RDP";
     }
+    // 어떤 패턴도 발견되지 않았을 때
+    return "Unknown";
+}
+
+// 패킷 핸들러 함수
+void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
+    const struct ether_header *eth_header;
+    const struct ip *ip_header;
+    const struct tcphdr *tcp_header;
+    const u_char *payload;
+    int payload_length;
+
+    // Ethernet 헤더 추출
+    eth_header = (struct ether_header *)packet;
+
+    // IP 헤더 추출
+    ip_header = (struct ip *)(packet + sizeof(struct ether_header));
+
+    // TCP 헤더 추출
+    tcp_header = (struct tcphdr *)(packet + sizeof(struct ether_header) + ip_header->ip_hl * 4);
+
+    // Ethernet 헤더 출력
+    print_ethernet_header(eth_header);
+    // IP 헤더 출력
+    print_ip_header(ip_header);
+    // TCP 헤더 출력
+    print_tcp_header(tcp_header);
+
+    // 페이로드 시작 위치 및 길이 계산
+    payload = packet + sizeof(struct ether_header) + ip_header->ip_hl * 4 + tcp_header->th_off * 4;
+    payload_length = pkthdr->len - (sizeof(struct ether_header) + ip_header->ip_hl * 4 + tcp_header->th_off * 4);
+
+    // 패킷 분석 및 검출된 프로토콜 출력
+    const char *protocol = analyze_packet(payload, payload_length);
+    printf("Detected Protocol: %s\n", protocol);
 }
 
 int main(int argc, char *argv[]) {
@@ -89,3 +107,4 @@ int main(int argc, char *argv[]) {
     printf("Analysis complete.\n");
     return 0;
 }
+

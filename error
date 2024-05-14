@@ -1,8 +1,5 @@
-pcap.c: In function ‘packet_handler’:
-pcap.c:65:28: warning: implicit declaration of function ‘analyze_packet’ [-Wimplicit-function-declaration]
-   65 |     const char *protocol = analyze_packet(payload, payload_length);
-      |                            ^~~~~~~~~~~~~~
-pcap.c:65:28: warning: initialization of ‘const char *’ from ‘int’ makes pointer from integer without a cast [-Wint-conversion]
-/usr/bin/ld: /tmp/ccW8ZgEk.o: in function `packet_handler':
-pcap.c:(.text+0x26e): undefined reference to `analyze_packet'
-collect2: error: ld returned 1 exit status
+Src MAC: 70:5d:cc:2f:3b:ac, Dst MAC: 64:00:6a:5a:a3:a6
+Src IP: 13.107.21.239, Dst IP: 13.107.21.239
+Src Port: 443, Dst Port: 2290
+Detected Protocol: Unknown
+

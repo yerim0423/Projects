@@ -39,7 +39,7 @@ const char *analyze_packet(const u_char *payload, int payload_length) {
         return "HTTPS";
     }
     // RDP 패턴 검색
-    else if (payload_length >= 3 && memcmp(payload, "\x03\x00\x00", 3) == 0) {
+    else if (payload_length >= 7 && memcmp(payload, "\x03\x00\x00\x13\x0b\x00\x06", 7) == 0) {
         return "RDP";
     }
     // 어떤 패턴도 발견되지 않았을 때
@@ -101,4 +101,3 @@ int main(int argc, char *argv[]) {
     printf("Analysis complete.\n");
     return 0;
 }
-

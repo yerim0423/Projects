@@ -62,7 +62,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
         printf("Detected Protocol: SSH\n");
     }
     // RDP 패턴 검색
-    else if (payload_length >= 3 && memcmp(payload, "\x03\x00\x00", 3) == 0) {
+    else if (payload_length >= 5 && memcmp(payload, "\x03\x00\x00\x0b", 4) == 0) {
         printf("Detected Protocol: RDP\n");
     } else {
         printf("Detected Protocol: Unknown\n");

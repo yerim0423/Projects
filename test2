@@ -60,7 +60,12 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
     int ip_header_size = (packet[ethernet_header_size] & 0x0F) * 4;
 
     // TCP 헤더 크기
-    int tcp_header_size = (packet[ethernet_header_size + ip_header_size + 12] >> 4) * 4;
+    int tcp_header_size = 0;
+
+    // TCP 패킷인 경우에만 크기 계산
+    if (packet[ethernet_header_size + 9] == IPPROTO_TCP) {
+        tcp_header_size = (packet[ethernet_header_size + ip_header_size + 12] >> 4) * 4;
+    }
 
     // 페이로드 시작 위치 계산
     payload = packet + ethernet_header_size + ip_header_size + tcp_header_size;
@@ -74,7 +79,9 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
     // Ethernet, IP, TCP 헤더 정보 출력
     print_ethernet_header((const struct ether_header *)packet);
     print_ip_header((const struct ip *)(packet + ethernet_header_size));
-    print_tcp_header((const struct tcphdr *)(packet + ethernet_header_size + ip_header_size));
+    if (packet[ethernet_header_size + 9] == IPPROTO_TCP) {
+        print_tcp_header((const struct tcphdr *)(packet + ethernet_header_size + ip_header_size));
+    }
 }
 
 int main(int argc, char *argv[]) {
